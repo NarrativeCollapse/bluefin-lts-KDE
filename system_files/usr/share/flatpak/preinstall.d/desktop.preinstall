@@ -1,0 +1,15 @@
+# Installed from Flathub on first boot by flatpak-preinstall.service.
+# Removing an entry here uninstalls that app from existing systems on update.
+
+# App store (also used by Bazzite)
+[Flatpak Preinstall io.github.kolunmi.Bazaar]
+Branch=stable
+IsRuntime=false
+
+[Flatpak Preinstall org.mozilla.firefox]
+Branch=stable
+IsRuntime=false
+
+[Flatpak Preinstall com.github.tchx84.Flatseal]
+Branch=stable
+IsRuntime=false

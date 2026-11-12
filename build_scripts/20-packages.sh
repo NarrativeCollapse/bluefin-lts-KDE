@@ -6,9 +6,6 @@ dnf -y remove \
 	setroubleshoot
 
 dnf -y install \
-	-x gnome-extensions-app \
-	NetworkManager-openconnect-gnome \
-	NetworkManager-openvpn-gnome \
 	btrfs-progs \
 	buildah \
 	containerd \
@@ -20,16 +17,13 @@ dnf -y install \
 	fpaste \
 	fzf \
 	glow \
-	gnome-disk-utility \
 	gum \
 	hplip \
-	ibus-chewing \
 	jetbrains-mono-fonts-all \
 	jxl-pixbuf-loader \
 	just \
 	nss-mdns \
 	ntfs-3g \
-	papers-thumbnailer \
 	pcsc-lite \
 	powertop \
 	rclone \
@@ -41,6 +35,12 @@ dnf -y install \
 	xdg-terminal-exec \
 	xhost
 rm -rf /usr/share/doc/just
+
+# KDE frontends for VPNs and disk management
+/run/context/build_scripts/scripts/dnf-install-available \
+	kde-partitionmanager \
+	plasma-nm-openconnect \
+	plasma-nm-openvpn
 
 # Everything that depends on external repositories should be after this.
 # Make sure to set them as disabled and enable them only when you are going to use their packages.
@@ -66,14 +66,3 @@ dnf -y --enablerepo "copr:copr.fedorainfracloud.org:che:nerd-fonts" install \
 # the homebrew package getting updated through our builds.
 # We could get some kind of static binary for GCC but this is the cleanest and most tested alternative. This Sucks.
 dnf -y --setopt=install_weak_deps=False install gcc
-
-if [[ "${GNOME_VERSION:-49}" == "50" ]]; then
-    # Versionlock GNOME 50 components to prevent downgrades to EL10 base versions
-    dnf versionlock add gnome-shell gdm mutter gnome-session-wayland-session \
-        gnome-settings-daemon gnome-control-center gsettings-desktop-schemas \
-        gtk4 libadwaita pango fontconfig selinux-policy selinux-policy-targeted gnutls
-else
-    # Versionlock GNOME 49 components to prevent upgrades to a mismatched version
-    dnf versionlock add gnome-shell gdm gnome-session-wayland-session gobject-introspection gjs pango fontconfig selinux-policy selinux-policy-targeted gnutls
-fi
-

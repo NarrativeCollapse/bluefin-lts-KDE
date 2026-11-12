@@ -1,0 +1,20 @@
+# Game launchers, installed from Flathub on first boot by flatpak-preinstall.service.
+# Bazzite ships these as RPMs; those packages are not available for CentOS Stream.
+# Removing an entry here uninstalls that app from existing systems on update.
+
+[Flatpak Preinstall com.valvesoftware.Steam]
+Branch=stable
+IsRuntime=false
+
+[Flatpak Preinstall net.lutris.Lutris]
+Branch=stable
+IsRuntime=false
+
+[Flatpak Preinstall com.heroicgameslauncher.hgl]
+Branch=stable
+IsRuntime=false
+
+# Manages Proton-GE and other compatibility tools for the launchers above
+[Flatpak Preinstall com.vysp3r.ProtonPlus]
+Branch=stable
+IsRuntime=false

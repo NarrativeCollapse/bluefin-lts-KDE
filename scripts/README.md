@@ -1,8 +1,8 @@
-# Bluefin LTS Utility Scripts
+# Bluefin LTS KDE Utility Scripts
 
 ## create-test-vm.sh
 
-Creates a test VM from a Bluefin LTS bootc image with SSH enabled, suitable for testing in Lima/QEMU.
+Creates a test VM from a Bluefin LTS KDE bootc image (set `IMAGE` to use another image) with SSH enabled, suitable for testing in Lima/QEMU.
 
 ### Usage
 
@@ -11,8 +11,8 @@ Creates a test VM from a Bluefin LTS bootc image with SSH enabled, suitable for 
 ```
 
 **Arguments:**
-- `VM_NAME` (optional, default: `bluefin-test-ssh`): Name for the VM
-- `IMAGE_TAG` (optional, default: `lts-hwe`): Bluefin image tag to use
+- `VM_NAME` (optional, default: `bluefin-lts-kde-test`): Name for the VM
+- `IMAGE_TAG` (optional, default: `lts-hwe`): Image tag to use
 - `SSH_PUB_KEY` (optional, default: `$HOME/.ssh/id_ed25519.pub`): SSH public key to inject
 
 ### Example
@@ -21,16 +21,16 @@ Creates a test VM from a Bluefin LTS bootc image with SSH enabled, suitable for 
 # Create a test VM with default settings
 ./scripts/create-test-vm.sh
 
-# Create a VM named "gnome49-test" using lts-hwe-testing image
-./scripts/create-test-vm.sh gnome49-test lts-hwe-testing
+# Create a VM named "kde-test" using the lts-hwe-testing image
+./scripts/create-test-vm.sh kde-test lts-hwe-testing
 
 # Create with specific SSH key
-./scripts/test-vm.sh my-test lts-hwe ~/.ssh/mykey.pub
+./scripts/create-test-vm.sh my-test lts-hwe ~/.ssh/mykey.pub
 ```
 
 ### What It Does
 
-1. Pulls the specified Bluefin LTS image
+1. Pulls the specified image
 2. Runs the container and enables SSH daemon using `systemctl preset sshd`
 3. Commits the modified container to a new local image
 4. Creates a 32GB disk image using `bootc install to-disk`

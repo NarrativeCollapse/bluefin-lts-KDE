@@ -11,17 +11,17 @@ on:
         description: "The description of the image to build"
         required: false
         type: string
-        default: "Bluefin LTS, built on CentOS Stream with bootc"
+        default: "Bluefin LTS KDE: a KDE Plasma gaming image built on CentOS Stream with bootc"
       flavor:
         description: "The flavor of the image to build"
         required: false
         type: string
         default: ""
       platforms:
-        description: "The platforms to build the image for"
+        description: "The platforms to build the image for (Steam is x86_64-only)"
         required: false
         type: string
-        default: "amd64,arm64"
+        default: "amd64"
       centos-version:
         description: "The version of CentOS to build the image on"
         required: false
@@ -38,7 +38,7 @@ on:
         type: boolean
         default: true
       hwe:
-        description: "Enable experimental things during builds, such as gnome backport. Will build an extra `-hwe` tag."
+        description: "Use the newer Fedora CoreOS (HWE) kernel. Adds `-hwe` to the tag."
         required: false
         type: boolean
         default: false
@@ -58,11 +58,6 @@ on:
         required: false
         type: string
         default: ""
-      gnome-version:
-        description: "GNOME major version to build (49 or 50)"
-        required: false
-        type: string
-        default: "49"
     secrets:
       SIGNING_SECRET:
         description: "The private key used to sign the image"
@@ -71,10 +66,8 @@ on:
 env:
   IMAGE_NAME: ${{ inputs.image-name }}
   IMAGE_DESC: ${{ inputs.image-desc }}
-  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
   DEFAULT_TAG: "lts" # DO NOT CHANGE! (this will break everything)
-  PRODUCTION_BRANCH: lts # This is the branch that everthing gets merged to at the end
-  TESTING_BRANCH: main # This is there the PRs go to :)
+  PRODUCTION_BRANCH: main # Builds from any other ref get a "-testing" tag suffix
   CENTOS_VERSION: ${{ inputs.centos-version }}
   PLATFORMS: ${{ inputs.platforms }}
 
@@ -117,6 +110,10 @@ jobs:
       image_tag: ${{ steps.build-image.outputs.image_tag }}
 
     steps:
+      - name: Set image registry
+        # Registry paths must be lowercase; the GitHub owner name may not be
+        run: echo "IMAGE_REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "${GITHUB_ENV}"
+
       - name: Install dependencies
         if: matrix.platform == 'arm64'
         run: |
@@ -129,8 +126,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          submodules: recursive
 
       - name: Setup Just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
@@ -153,8 +148,7 @@ jobs:
           just=$(which just)
 
           ENABLE_HWE=0
-          ENABLE_GDX=0
-          ENABLE_DX=0
+          ENABLE_NVIDIA=0
           if [[ "${HWE}" == "true" ]] ; then
             export DEFAULT_TAG="${DEFAULT_TAG}-hwe"
             ENABLE_HWE=1
@@ -170,26 +164,23 @@ jobs:
           fi
 
           echo "DEFAULT_TAG=${DEFAULT_TAG}" >> "${GITHUB_ENV}"
-          if [[ "${FLAVOR}" =~ "gdx" ]] ; then
-            ENABLE_GDX=1
-          fi
-          if [[ "${FLAVOR}" =~ "dx" ]] ; then
-            ENABLE_DX=1
+          if [[ "${FLAVOR}" == "nvidia" ]] ; then
+            ENABLE_NVIDIA=1
           fi
 
-          sudo $just build "${IMAGE_NAME}" "${DEFAULT_TAG}" "${ENABLE_DX}" "${ENABLE_GDX}" "${ENABLE_HWE}" "${{ inputs.kernel-pin }}" "${{ inputs.gnome-version }}"
+          sudo $just build "${IMAGE_NAME}" "${DEFAULT_TAG}" "${ENABLE_NVIDIA}" "${ENABLE_HWE}" "${{ inputs.kernel-pin }}"
           echo "image_tag=${DEFAULT_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Syft
         id: setup-syft
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           syft-version: v1.39.0
 
       - name: Generate SBOM
         id: generate-sbom
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         env:
           IMAGE: ${{ env.IMAGE_NAME }}
           DEFAULT_TAG: ${{ env.DEFAULT_TAG }}
@@ -275,16 +266,16 @@ jobs:
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
 
       - name: Install ORAS
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         uses: oras-project/setup-oras@5e2f2482b30b0cb3e14e67f89a80c88c659a7c63 # v2.0.3
 
       - name: Login to GitHub Container Registry with ORAS
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Upload SBOM
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         id: upload-sbom
         env:
           IMAGE: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -306,7 +297,7 @@ jobs:
           echo "sbom_digest=${sbom_digest}" >> "${GITHUB_OUTPUT}"
 
       - name: Sign SBOM OCI Artifact
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         env:
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
@@ -317,7 +308,7 @@ jobs:
           cosign sign -y --key env://COSIGN_PRIVATE_KEY "${IMAGE_REGISTRY}/${IMAGE_NAME}@${SBOM_DIGEST}"
 
       - name: Attestation
-        if: ${{ github.ref == 'refs/heads/lts' && inputs.publish }}
+        if: ${{ github.ref == 'refs/heads/main' && inputs.publish }}
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -369,6 +360,10 @@ jobs:
           ln -sf /bin/bash /bin/sh
           mkdir -p /etc/containers
           echo '{"default":[{"type":"insecureAcceptAnything"}]}' | jq . > /etc/containers/policy.json
+
+      - name: Set image registry
+        # Registry paths must be lowercase; the GitHub owner name may not be
+        run: echo "IMAGE_REGISTRY=ghcr.io/$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
 
       - name: Exit on failure
         env:
@@ -442,21 +437,19 @@ jobs:
             type=raw,value=${{ env.CENTOS_VERSION_NUMBER }}${{ env.CENTOS_VERSION_SUFFIX }}${{ env.TAG_SUFFIX }}-{{date 'YYYYMMDD'}}
             type=ref,event=pr
           labels: |
-            bluefin.commit=${{ github.sha }}
-            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/refs/heads/main/README.md
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.artifacthub.package.readme-url=https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/README.md
             org.opencontainers.image.created=${{ steps.date.outputs.date }}
             org.opencontainers.image.description=${{ env.IMAGE_DESC }}
-            org.opencontainers.image.documentation=https://docs.projectbluefin.io
-            org.opencontainers.image.source=https://github.com/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}/blob/main/Containerfile
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}/blob/main/Containerfile
             org.opencontainers.image.title=${{ env.IMAGE_NAME }}
-            org.opencontainers.image.url=https://projectbluefin.io
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
             org.opencontainers.image.version=${{ env.CENTOS_VERSION }}
             io.artifacthub.package.deprecated=false
-            io.artifacthub.package.keywords=bootc,centos,bluefin,ublue,universal-blue
+            io.artifacthub.package.keywords=bootc,centos,kde,plasma,gaming,ublue
             io.artifacthub.package.license=Apache-2.0
-            io.artifacthub.package.logo-url=https://avatars.githubusercontent.com/u/120078124?s=200&v=4
-            io.artifacthub.package.maintainers=[{\"name\":\"tulilirockz\",\"email\":\"tulilirockz@outlook.com\"},{\"name\":\"castrojo\",\"email\":\"jorge.castro@gmail.com\"}]
             io.artifacthub.package.prerelease=true
             containers.bootc=1
 

@@ -2,20 +2,10 @@
 
 set -xeuo pipefail
 
-# Fancy CentOS icon on the fastfetch
-sed -i "s/󰣛//g" /usr/share/ublue-os/fastfetch.jsonc
-
-# Automatic wallpaper changing by month
-HARDCODED_RPM_MONTH="12"
-sed -i "/picture-uri/ s/${HARDCODED_RPM_MONTH}/$(date +%m)/" "/usr/share/glib-2.0/schemas/zz0-bluefin-modifications.gschema.override"
-glib-compile-schemas /usr/share/glib-2.0/schemas
-
-# Rebuild gdk-pixbuf loader cache so all installed loaders are registered
-gdk-pixbuf-query-loaders-64 --update-cache
-
-# Offline Bluefin documentation
-curl --retry 3 -Lo /tmp/bluefin.pdf https://github.com/ublue-os/bluefin-docs/releases/download/0.1/bluefin.pdf
-install -Dm0644 -t /usr/share/doc/bluefin/ /tmp/bluefin.pdf
+# Rebuild gdk-pixbuf loader cache so all installed loaders are registered (GTK apps)
+if command -v gdk-pixbuf-query-loaders-64 >/dev/null 2>&1; then
+	gdk-pixbuf-query-loaders-64 --update-cache
+fi
 
 # Add Flathub by default
 mkdir -p /etc/flatpak/remotes.d
@@ -37,7 +27,7 @@ grep -F -e "IPv6_rpfilter=loose" /etc/firewalld/firewalld.conf
 
 depmod -a "$(ls -1 /lib/modules/ | tail -1)"
 
-# Generate initramfs image after installing Bluefin branding because of Plymouth subpackage
+# Generate initramfs image after installing branding because of Plymouth subpackage
 # Add resume module so that hibernation works
 echo "add_dracutmodules+=\" resume \"" >/etc/dracut.conf.d/resume.conf
 KERNEL_SUFFIX=""

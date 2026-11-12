@@ -1,35 +1,25 @@
-# Bluefin LTS — Agent Quick Reference
+# Bluefin LTS KDE — Agent Quick Reference
+
+KDE Plasma gaming image on CentOS Stream 10 (bootc), derived from Bluefin LTS with Bazzite-style gaming features. See `README.md` for what the image contains.
 
 **Lazy-load skills — read only what the task needs.**
-
-## Skill Index
 
 | Task | Load |
 |---|---|
 | Local build, validation, packages | `docs/skills/build.md` |
-| CI/CD workflows, publish logic, tag namespaces | `docs/skills/ci-cd.md` |
-| Testing PRs on ghost homelab (titan-lts) | `docs/skills/testlab.md` |
-| Release, rollback, registry, ISO status | `docs/skills/release.md` |
 
 ## Always-On Rules
 
 - **NEVER cancel builds** — 45–90 min, set 120+ min timeout
-- **NEVER squash-merge** promotion PRs (`main→lts`) — breaks merge base permanently
-- **NEVER re-enable LTS ISO builds** — Anaconda is broken on CentOS Stream base
-- **NEVER commit directly to `lts` branch** — land in `main` first
-- **NEVER merge `lts→main`** — flow is one-way: `main→lts` only
+- **NEVER re-enable ISO builds** — Anaconda is broken on the CentOS Stream base
+- Only packages available for CentOS Stream 10 / EPEL 10 can be used. Fedora-only repos (RPM Fusion, Terra, Fedora COPRs) do not apply.
+- Install packages the image cannot work without with plain `dnf -y install`, so a missing package fails the build. Use `build_scripts/scripts/dnf-install-available` only for nice-to-haves.
+- Steam is x86_64-only: do not add arm64 builds back.
 
 ## Quick Commands
 
 ```bash
-just check && just lint     # validate before every commit
-just build bluefin lts      # full build (120+ min timeout)
-```
-
-## Attribution
-
-Every commit must include:
-```text
-Assisted-by: [Model Name] via [Tool Name]
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+just check && just lint                          # validate before every commit
+just build                                       # full build (120+ min timeout)
+just build bluefin-lts-kde-nvidia lts-hwe 1 1    # Nvidia variant
 ```
