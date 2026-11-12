@@ -2,10 +2,11 @@
 
 ## Prereqs
 
-| Tool | Check | Install / note |
+| Tool | Check | Note |
 |---|---|---|
-| `just` | `which just` | If missing: `mkdir -p ~/.local/bin && wget -qO- "https://github.com/casey/just/releases/download/1.34.0/just-1.34.0-x86_64-unknown-linux-musl.tar.gz" \| tar --no-same-owner -C ~/.local/bin -xz just && export PATH="$HOME/.local/bin:$PATH"` |
+| `just` | `which just` | task runner |
 | `podman` | `which podman` | required for image + VM builds |
+| `yq` | `which yq` | reads pinned digests from `image-versions.yaml` |
 | `git` | `which git` | required |
 
 ## Fast validation
@@ -14,68 +15,46 @@
 just check && just lint
 ```
 
-- Run before every commit.
-- `just check` validates Just syntax (<30s).
-- `just lint` runs shellcheck (<10s).
-- `just format` exists for shfmt when editing shell.
+- `just check` validates Just syntax, including the ujust recipes in `system_files/usr/share/ublue-os/just/`.
+- `just lint` runs shellcheck on all `*.sh` files.
 
 ## Core builds
 
+`just build [image] [tag] [nvidia] [hwe] [kernel_pin]`
+
 | Goal | Command | Typical time |
 |---|---|---|
-| Regular | `just build bluefin lts 0 0 0` | 45-90 min |
-| DX | `just build bluefin lts 1 0 0` | 45-90 min |
-| GDX | `just build bluefin lts 0 1 0` | 45-90 min |
-| HWE | `just build bluefin lts 0 0 1` | 45-90 min |
+| Main image (HWE kernel) | `just build` | 45-90 min |
+| Nvidia | `just build bluefin-lts-kde-nvidia lts-hwe 1 1` | 45-90 min |
+| CentOS kernel (no HWE) | `just build bluefin-lts-kde lts 0 0` | 45-90 min |
 
 **Never cancel builds.** Use 120+ minute timeouts.
 
-## Variant map
+## How the build is layered
 
-| Variant | What changes |
-|---|---|
-| Regular | base LTS image |
-| DX | developer tools, VS Code, Docker |
-| GDX | GPU / AI tooling |
-| HWE | newer hardware enablement |
+1. `build_scripts/overrides/base/` installs the kernel (from the akmods images), EPEL, codecs, and KDE Plasma.
+2. Files are copied in this order, with later copies winning: `ghcr.io/ublue-os/brew`, then the `shared` half of `ghcr.io/projectbluefin/common`, then this repo's `system_files/`.
+3. `build_scripts/[0-9][0-9]-*.sh` run in order: workarounds, packages, gaming packages, post-install, services, image info.
+4. `system_files_overrides/x86_64` and `build_scripts/overrides/x86_64` apply, then the `nvidia` overrides when `ENABLE_NVIDIA=1`.
+5. `build_scripts/cleanup.sh` runs last.
 
-## VM / disk artifacts
-
-| Command | Purpose | Time |
-|---|---|---|
-| `just build-qcow2` | convert existing container image to QCOW2 | 45-90 min |
-| `just rebuild-qcow2` | build image, then QCOW2 | 90-180 min |
-| `just build-raw` | raw disk image | 45-90 min |
-| `just build-iso` | installer image; **LTS ISO remains disabled for release/promote work** | 45-90 min |
-| `just run-vm-qcow2` | boot QCOW2; web console on `http://localhost:8006` | runtime |
-| `just run-vm-iso` / `just spawn-vm` | local VM helpers | runtime |
-
-Never run VMs in CI; KVM/graphics are required.
-
-## Repo layout for build work
+## Repo layout
 
 | Path | Use |
 |---|---|
 | `build_scripts/` | package install + build logic |
-| `system_files/` | base system config |
-| `system_files_overrides/` | variant / arch overrides |
+| `build_scripts/scripts/dnf-install-available` | best-effort installer for optional packages |
+| `system_files/` | base system config (gaming sysctl/udev, Flatpak preinstalls, ujust recipes) |
+| `system_files_overrides/` | arch / Nvidia overrides |
 | `Containerfile` | main image definition |
-| `image.toml`, `iso.toml` | BIB configs |
+| `image.toml` | bootc-image-builder config for VM images |
 
-## Debugging checklist
+## VM / disk artifacts
 
-| Symptom | Check |
+| Command | Purpose |
 |---|---|
-| build fails early | `just check && just lint` |
-| missing command | `which just podman git` |
-| package pulls fail | repo/network timeout; retry after failure completes naturally |
-| storage errors | run `just clean`, verify free disk |
-| permission issues | some build paths require sudo/root |
+| `just build-qcow2` | convert existing container image to QCOW2 |
+| `just rebuild-qcow2` | build image, then QCOW2 |
+| `just run-vm-qcow2` | boot QCOW2; web console on `http://localhost:8006` |
 
-Recovery loop:
-
-```bash
-just clean
-just check && just lint
-just build bluefin lts
-```
+Never run VMs in CI; KVM/graphics are required.

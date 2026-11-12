@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Best-effort package install.
+#
+# Installs every package in "$@" that is available and skips the rest instead
+# of failing the build, then prints a CI warning naming each skipped package.
+# Use this only for nice-to-have packages whose availability in CentOS Stream /
+# EPEL is not guaranteed. Anything the image cannot work without belongs in a
+# plain `dnf -y install` so that a missing package fails the build.
+#
+# Usage: dnf-install-available [--enablerepo=REPO ...] pkg1 pkg2 ...
+
+set -euo pipefail
+
+DNF_OPTS=()
+PKGS=()
+for arg in "$@"; do
+	if [[ "${arg}" == --* ]]; then
+		DNF_OPTS+=("${arg}")
+	else
+		PKGS+=("${arg}")
+	fi
+done
+
+if [[ ${#PKGS[@]} -eq 0 ]]; then
+	exit 0
+fi
+
+dnf -y install --setopt=strict=0 "${DNF_OPTS[@]}" "${PKGS[@]}"
+
+MISSING=()
+for pkg in "${PKGS[@]}"; do
+	if ! rpm -q --whatprovides "${pkg}" >/dev/null 2>&1; then
+		MISSING+=("${pkg}")
+	fi
+done
+
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+	echo "::warning::Packages not available, skipped: ${MISSING[*]}"
+fi

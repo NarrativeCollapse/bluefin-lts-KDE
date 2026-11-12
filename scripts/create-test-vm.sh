@@ -1,25 +1,26 @@
 #!/bin/bash
 set -e
 
-# Script to create a test VM from Bluefin LTS with SSH enabled
+# Script to create a test VM from Bluefin LTS KDE with SSH enabled
 # This allows testing bootc images in Lima/QEMU VMs
 
-VM_NAME="${1:-bluefin-test-ssh}"
+VM_NAME="${1:-bluefin-lts-kde-test}"
 IMAGE_TAG="${2:-lts-hwe}"
 SSH_PUB_KEY="${3:-$HOME/.ssh/id_ed25519.pub}"
 DISK_SIZE="32G"
 MEMORY="8GiB"
 CPUS="4"
+IMAGE="${IMAGE:-ghcr.io/narrativecollapse/bluefin-lts-kde}"
 
-echo "=== Bluefin LTS Test VM Creator ==="
+echo "=== Bluefin LTS KDE Test VM Creator ==="
 echo "VM Name: $VM_NAME"
-echo "Base Image: ghcr.io/ublue-os/bluefin:$IMAGE_TAG"
+echo "Base Image: ${IMAGE}:$IMAGE_TAG"
 echo "SSH Key: $SSH_PUB_KEY"
 echo ""
 
 # Step 1: Pull the base image
 echo "Step 1: Pulling base image..."
-podman pull "ghcr.io/ublue-os/bluefin:$IMAGE_TAG"
+podman pull "${IMAGE}:$IMAGE_TAG"
 
 # Step 2: Create disk image
 echo "Step 2: Creating disk image..."
@@ -32,7 +33,7 @@ echo "Step 3: Installing to disk with SSH key injection..."
 sudo podman run --rm --privileged --pid=host -e BOOTC_SETENFORCE0_FALLBACK=1 \
     -v /tmp:/tmp \
     -v "$(dirname "$SSH_PUB_KEY"):/ssh" \
-    "ghcr.io/ublue-os/bluefin:$IMAGE_TAG" \
+    "${IMAGE}:$IMAGE_TAG" \
     bootc install to-disk \
     --via-loopback \
     --filesystem xfs \

@@ -1,5 +1,6 @@
-export repo_organization := env("GITHUB_REPOSITORY_OWNER", "ublue-os")
-export image_name := env("IMAGE_NAME", "bluefin")
+# Registries need lowercase names; GitHub owners can be mixed case
+export repo_organization := lowercase(env("GITHUB_REPOSITORY_OWNER", "narrativecollapse"))
+export image_name := env("IMAGE_NAME", "bluefin-lts-kde")
 export centos_version := env("CENTOS_VERSION", "stream10")
 export default_tag := env("DEFAULT_TAG", "lts")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
@@ -76,27 +77,17 @@ sudoif command *args:
 # This Justfile recipe builds a container image using Podman.
 #
 # Arguments:
-#   $target_image - The tag you want to apply to the image (default: bluefin).
+#   $target_image - The tag you want to apply to the image (default: bluefin-lts-kde).
 #   $tag - The tag for the image (default: lts).
-#   $dx - Enable DX (default: "0").
-#   $gdx - Enable GDX (default: "0").
-#
-# DX:
-#   Developer Experience (DX) is a feature that allows you to install the latest developer tools for your system.
-#   Packages include VScode, Docker, Distrobox, and more.
-# GDX: https://docs.projectbluefin.io/gdx/
-#   GPU Developer Experience (GDX) creates a base as an AI and Graphics platform.
-#   Installs Nvidia drivers, CUDA, and other tools.
-#
-# The script constructs the version string using the tag and the current date.
-# If the git working directory is clean, it also includes the short SHA of the current HEAD.
-#
-# just build $target_image $tag $dx $gdx $hwe
+#   $nvidia - Install the Nvidia driver (default: "0").
+#   $hwe - Use the newer Fedora CoreOS kernel instead of the CentOS one (default: "1").
+#          Gaming features such as ntsync and the xone Xbox driver need it.
+#   $kernel_pin - Pin a specific kernel version (default: latest).
 #
 # Example usage:
-#   just build bluefin lts 1 0 1
+#   just build bluefin-lts-kde-nvidia lts-hwe 1 1
 #
-# This will build an image 'bluefin:lts' with DX and HWE enabled.
+# This will build an image 'bluefin-lts-kde-nvidia:lts-hwe' with the Nvidia driver and the HWE kernel.
 #
 
 [private]
@@ -109,7 +100,7 @@ _ensure-yq:
     fi
 
 # Build the image using the specified parameters
-build $target_image=image_name $tag=default_tag $dx="0" $gdx="0" $hwe="0" $kernel_pin="" $gnome_version="49": _ensure-yq
+build $target_image=image_name $tag=default_tag $nvidia="0" $hwe="1" $kernel_pin="": _ensure-yq
     #!/usr/bin/env bash
 
     # Get Version
@@ -124,15 +115,13 @@ build $target_image=image_name $tag=default_tag $dx="0" $gdx="0" $hwe="0" $kerne
     BUILD_ARGS+=("--build-arg" "COMMON_IMAGE_REF=${common_image_ref}")
     BUILD_ARGS+=("--build-arg" "BREW_IMAGE_REF=${brew_image_ref}")
     BUILD_ARGS+=("--build-arg" "MAJOR_VERSION=${centos_version}")
-    BUILD_ARGS+=("--build-arg" "IMAGE_NAME=${image_name}")
+    BUILD_ARGS+=("--build-arg" "IMAGE_NAME=${target_image##*/}")
     BUILD_ARGS+=("--build-arg" "IMAGE_VENDOR=${repo_organization}")
-    BUILD_ARGS+=("--build-arg" "ENABLE_DX=${dx}")
-    BUILD_ARGS+=("--build-arg" "ENABLE_GDX=${gdx}")
+    BUILD_ARGS+=("--build-arg" "ENABLE_NVIDIA=${nvidia}")
     BUILD_ARGS+=("--build-arg" "ENABLE_HWE=${hwe}")
-    BUILD_ARGS+=("--build-arg" "GNOME_VERSION=${gnome_version}")
-    # Select akmods source tag for mounted ZFS/NVIDIA images
+    # Select akmods source tag for the mounted kernel/NVIDIA images
     ARCH=$(uname -m)
-    if [[ "${hwe}" -eq "1" || "${gdx}" -eq "1" ]]; then
+    if [[ "${hwe}" -eq "1" || "${nvidia}" -eq "1" ]]; then
         AKMODS_BASE="coreos-stable-${coreos_stable_version}"
     else
         AKMODS_BASE="centos-10"
@@ -259,51 +248,6 @@ build-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_bui
 [group('Build Virtal Machine Image')]
 build-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "raw" "image.toml")
 
-# Build an ISO virtual machine image
-[group('Build Virtal Machine Image')]
-build-iso $target_image=("localhost/" + image_name) $tag=default_tag:
-    #!/usr/bin/env bash
-    set -eoux pipefail
-
-    # Determine Repo
-    REPO="local"
-    if [[ "{{ target_image }}" =~ ghcr.io ]]; then
-        REPO="ghcr"
-    fi
-
-    # Determine Variant
-    VARIANT="bluefin"
-    if [[ "{{ tag }}" =~ lts ]]; then
-        VARIANT="lts"
-    fi
-
-    # Determine Flavor
-    FLAVOR="base"
-    if [[ "{{ target_image }}" =~ -dx ]]; then
-        FLAVOR="dx"
-    fi
-    if [[ "{{ target_image }}" =~ -gdx ]]; then
-        FLAVOR="gdx"
-    fi
-
-    echo "Delegating to projectbluefin/iso..."
-    echo "Variant: $VARIANT"
-    echo "Flavor:  $FLAVOR"
-    echo "Repo:    $REPO"
-
-    # Clone and Build
-    BUILD_ROOT="_iso_build"
-    rm -rf "$BUILD_ROOT"
-    git clone https://github.com/projectbluefin/iso.git "$BUILD_ROOT"
-
-    pushd "$BUILD_ROOT"
-    just local-iso "$VARIANT" "$FLAVOR" "$REPO"
-    popd
-
-    # Copy Artifacts
-    mv "$BUILD_ROOT"/*.iso .
-    rm -rf "$BUILD_ROOT"
-
 # Rebuild a QCOW2 virtual machine image
 [group('Build Virtal Machine Image')]
 rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "qcow2" "image.toml")
@@ -311,10 +255,6 @@ rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_r
 # Rebuild a RAW virtual machine image
 [group('Build Virtal Machine Image')]
 rebuild-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "raw" "image.toml")
-
-# Rebuild an ISO virtual machine image
-[group('Build Virtal Machine Image')]
-rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "iso" "iso.toml")
 
 # Run a virtual machine with the specified image type and configuration
 _run-vm $target_image $tag $type $config $iso_file="":
@@ -398,14 +338,14 @@ lint:
 
 # Usage: just create-test-vm [name] [tag] [ssh-key]
 [group('VM Testing')]
-create-test-vm name="bluefin-test-ssh" tag="lts-hwe" ssh_key="":
+create-test-vm name="bluefin-lts-kde-test" tag="lts-hwe" ssh_key="":
     @echo "Creating test VM: {{ name }}"
     @if [ -z "{{ ssh_key }}" ]; then ssh_key="{{ HOME }}/.ssh/id_ed25519.pub"; fi
     @./scripts/create-test-vm.sh "{{ name }}" "{{ tag }}" "{{ ssh_key }}"
 
 # Create and immediately start a test VM
 [group('VM Testing')]
-run-test-vm name="bluefin-test-ssh" tag="lts-hwe":
+run-test-vm name="bluefin-lts-kde-test" tag="lts-hwe":
     @just create-test-vm "{{ name }}" "{{ tag }}" ""
     @echo "Starting VM: {{ name }}"
     @limactl start "{{ name }}"
